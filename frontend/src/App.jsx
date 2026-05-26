@@ -2,6 +2,7 @@ import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ToastProvider } from './components/Toast'
+import ErrorBoundary from './components/ErrorBoundary'
 import Login from './pages/Login'
 import Setup from './pages/Setup'
 import Inbox from './pages/Inbox'
@@ -33,6 +34,7 @@ function PublicRoute({ children }) {
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <AuthProvider>
       <ToastProvider>
         <BrowserRouter>
@@ -47,5 +49,6 @@ export default function App() {
         </BrowserRouter>
       </ToastProvider>
     </AuthProvider>
+    </ErrorBoundary>
   )
 }
