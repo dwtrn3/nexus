@@ -17,6 +17,7 @@ import googleChatRoutes from './routes/googleChat.js';
 import messagesRoutes from './routes/messages.js';
 import settingsRoutes from './routes/settings.js';
 import { initSocketIO } from './socket/index.js';
+import { setIO } from './socket/io-singleton.js';
 import passport from 'passport';
 import { configurePassport } from './config/passport.js';
 
@@ -68,6 +69,7 @@ const io = new SocketIOServer(server, {
   }
 });
 initSocketIO(io);
+setIO(io); // Make io available to routes via singleton
 export { io };
 
 // Routes

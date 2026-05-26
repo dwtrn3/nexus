@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
-import { io } from 'socket.io-client'
+import { createSocket } from '../lib/socket'
 import api from '../api'
 import { useAuth } from '../context/AuthContext'
 import Sidebar from '../components/Sidebar'
@@ -71,7 +71,7 @@ export default function Inbox() {
   // Real-time
   useEffect(() => {
     if (!user) return
-    const socket = io('/', { withCredentials: true })
+    const socket = createSocket()
     socket.emit('authenticate', { userId: user.id })
     socket.on('new_message', () => { loadMessages(); loadUnread() })
     socket.on('thread_read', () => loadUnread())

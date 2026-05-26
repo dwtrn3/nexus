@@ -2,7 +2,7 @@ import express from 'express';
 import axios from 'axios';
 import { query } from '../config/database.js';
 import { requireAuth } from '../middleware/auth.js';
-import { io } from '../index.js';
+import { io } from '../socket/io-singleton.js';
 import { google } from 'googleapis';
 
 const router = express.Router();

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { format, isToday, isYesterday } from 'date-fns'
-import { io } from 'socket.io-client'
+import { createSocket } from '../lib/socket'
 import api from '../api'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../components/Toast'
@@ -75,7 +75,7 @@ export default function Thread() {
   // Socket.IO
   useEffect(() => {
     if (!user) return
-    const socket = io('/', { withCredentials: true })
+    const socket = createSocket()
     socket.emit('authenticate', { userId: user.id })
     socket.on('new_message', (msg) => {
       if (msg.thread_id === decodedThreadId) loadThread()
