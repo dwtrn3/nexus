@@ -101,9 +101,20 @@ async function getApp() {
   app.use('/api/messages', messagesRoutes);
   app.use('/api/settings', settingsRoutes);
 
-  app.get('/api/health', (req, res) =>
-    res.json({ status: 'ok', store: store ? 'redis' : 'memory', ts: new Date().toISOString() })
-  );
+  app.get('/api/health', async (req, res) => {
+    const result = { status: 'ok', store: store ? 'redis' : 'memory', ts: new Date().toISOString() };
+    try {
+      const { testConnection } = await import('../backend/src/config/database.js');
+      const db = await testConnection();
+      result.db = 'connected';
+      result.db_ts = db.ts;
+    } catch (err) {
+      result.db = 'error';
+      result.db_error = err.message;
+      result.status = 'degraded';
+    }
+    res.json(result);
+  });
 
   app.use((err, req, res, next) => {
     console.error(err);

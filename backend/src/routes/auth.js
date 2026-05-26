@@ -53,12 +53,16 @@ router.post('/login', (req, res, next) => {
 });
 
 // Demo login — creates the demo account if it doesn't exist, then logs in
-router.post('/demo', async (req, res, next) => {
+router.post('/demo', async (req, res, _next) => {
   const DEMO_EMAIL = 'demo@nexus.app';
   const DEMO_PASS  = 'Demo1234!';
   const DEMO_NAME  = 'Demo User';
 
   try {
+    if (!process.env.DATABASE_URL) {
+      return res.status(503).json({ error: 'Database not configured. Set DATABASE_URL in Vercel environment variables.' });
+    }
+
     let result = await query('SELECT * FROM users WHERE email = $1', [DEMO_EMAIL]);
     let user = result.rows[0];
 
@@ -118,16 +122,21 @@ router.post('/demo', async (req, res, next) => {
       }
     }
 
-    req.login(user, async (err) => {
-      if (err) return next(err);
+    req.login(user, async (loginErr) => {
+      if (loginErr) {
+        console.error('[demo] req.login error:', loginErr.message);
+        return res.status(500).json({ error: loginErr.message });
+      }
       try {
         const setup = await checkSetupStatus(user.id);
         res.json({ user: sanitizeUser(user), ...setup });
       } catch (e) {
+        console.error('[demo] checkSetupStatus error:', e.message);
         res.status(500).json({ error: e.message });
       }
     });
   } catch (err) {
+    console.error('[demo] error:', err.message, err.code || '');
     res.status(500).json({ error: err.message });
   }
 });
