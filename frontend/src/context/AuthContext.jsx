@@ -35,6 +35,14 @@ export function AuthProvider({ children }) {
     return res.data
   }
 
+  async function demo() {
+    const res = await api.post('/auth/demo')
+    setUser(res.data.user)
+    setSetupComplete(res.data.setupComplete)
+    setConnectedChannels(res.data.connectedChannels || {})
+    return res.data
+  }
+
   async function logout() {
     await api.post('/auth/logout')
     setUser(null)
@@ -51,7 +59,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, setupComplete, connectedChannels, login, register, logout, refreshAuth }}>
+    <AuthContext.Provider value={{ user, loading, setupComplete, connectedChannels, login, register, demo, logout, refreshAuth }}>
       {children}
     </AuthContext.Provider>
   )

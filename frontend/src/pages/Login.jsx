@@ -8,8 +8,9 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [loading, setLoading] = useState(false)
+  const [demoLoading, setDemoLoading] = useState(false)
   const [error, setError] = useState('')
-  const { login, register } = useAuth()
+  const { login, register, demo } = useAuth()
   const navigate = useNavigate()
 
   async function handleSubmit(e) {
@@ -37,6 +38,19 @@ export default function Login() {
 
   function handleGoogleLogin() {
     window.location.href = '/api/auth/google'
+  }
+
+  async function handleDemo() {
+    setError('')
+    setDemoLoading(true)
+    try {
+      const data = await demo()
+      navigate(data.setupComplete ? '/inbox' : '/setup')
+    } catch (err) {
+      setError(err.response?.data?.error || 'Demo login failed')
+    } finally {
+      setDemoLoading(false)
+    }
   }
 
   return (
@@ -138,6 +152,27 @@ export default function Login() {
               {loading ? 'Please wait...' : mode === 'login' ? 'Sign in' : 'Create account'}
             </button>
           </form>
+
+          <div className="relative my-5">
+            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"/></div>
+            <div className="relative flex justify-center text-xs text-gray-400 bg-white px-2">or try it instantly</div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleDemo}
+            disabled={demoLoading || loading}
+            className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-brand-300 rounded-lg py-2.5 px-4 text-sm font-medium text-brand-600 hover:bg-brand-50 transition-colors disabled:opacity-60"
+          >
+            {demoLoading ? (
+              <span className="inline-block w-4 h-4 border-2 border-brand-400 border-t-transparent rounded-full animate-spin"/>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            )}
+            {demoLoading ? 'Setting up demo…' : 'Try demo account'}
+          </button>
 
           <p className="text-center text-xs text-gray-400 mt-4">
             Don't have access?{' '}
