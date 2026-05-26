@@ -111,3 +111,11 @@ export async function initWhatsAppPersonal(sessionId, userId, phoneNumber) {
 export function getQRCode(sessionId) {
   return qrCodes.get(sessionId) || null;
 }
+
+export async function sendPersonalMessage(userId, toPhone, content) {
+  const sessionId = `wa_${userId}`;
+  const sock = sessions.get(sessionId);
+  if (!sock) throw new Error('WhatsApp personal session not active');
+  const jid = toPhone.includes('@') ? toPhone : `${toPhone}@s.whatsapp.net`;
+  await sock.sendMessage(jid, { text: content });
+}

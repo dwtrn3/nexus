@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import api from '../api'
 import Sidebar from '../components/Sidebar'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../components/Toast'
 
 const STATUS_STYLES = {
   connected: 'bg-green-100 text-green-700',
@@ -56,6 +57,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(true)
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const toast = useToast()
 
   useEffect(() => {
     loadChannels()
@@ -74,20 +76,29 @@ export default function Settings() {
 
   async function disconnectWhatsApp() {
     if (!confirm('Disconnect WhatsApp? You will stop receiving messages.')) return
-    await api.delete('/whatsapp/disconnect')
-    loadChannels()
+    try {
+      await api.delete('/whatsapp/disconnect')
+      toast.success('WhatsApp disconnected')
+      loadChannels()
+    } catch { toast.error('Failed to disconnect WhatsApp') }
   }
 
   async function disconnectSlackWorkspace(id) {
     if (!confirm('Remove this Slack workspace?')) return
-    await api.delete(`/slack/workspaces/${id}`)
-    loadChannels()
+    try {
+      await api.delete(`/slack/workspaces/${id}`)
+      toast.success('Slack workspace removed')
+      loadChannels()
+    } catch { toast.error('Failed to remove workspace') }
   }
 
   async function disconnectGmail() {
     if (!confirm('Disconnect Gmail?')) return
-    await api.delete('/gmail/disconnect')
-    loadChannels()
+    try {
+      await api.delete('/gmail/disconnect')
+      toast.success('Gmail disconnected')
+      loadChannels()
+    } catch { toast.error('Failed to disconnect Gmail') }
   }
 
   async function connectSlack() {

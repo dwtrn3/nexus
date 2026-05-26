@@ -96,6 +96,8 @@ const PORT = process.env.PORT || 3001;
 
 async function start() {
   await testConnection();
+  const { runMigrations } = await import('./migrations/run.js');
+  await runMigrations();
   server.listen(PORT, () => {
     console.log(`Nexus backend running on port ${PORT}`);
   });
