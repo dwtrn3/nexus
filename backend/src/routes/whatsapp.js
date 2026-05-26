@@ -1,7 +1,11 @@
 import express from 'express';
 import { query } from '../config/database.js';
 import { requireAuth } from '../middleware/auth.js';
-import { initWhatsAppPersonal, getQRCode } from '../services/whatsappPersonal.js';
+
+// NOTE: @whiskeysockets/baileys requires a persistent process and native
+// WebSocket support — neither available in Vercel serverless.
+// Personal-QR routes return 501 in production; Business API routes work fine.
+const IS_SERVERLESS = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
 
 const router = express.Router();
 
@@ -93,27 +97,22 @@ router.post('/connect/business', requireAuth, async (req, res) => {
   }
 });
 
-// Initiate WhatsApp Personal (QR)
+// Initiate WhatsApp Personal (QR) — requires persistent process, unavailable serverless
 router.post('/connect/personal/init', requireAuth, async (req, res) => {
+  if (IS_SERVERLESS) {
+    return res.status(501).json({ error: 'WhatsApp Personal QR requires the self-hosted (Docker) version of Nexus. Use WhatsApp Business API instead.' });
+  }
   try {
     const { phone_number } = req.body;
     if (!phone_number) return res.status(400).json({ error: 'Phone number required' });
-
     const normalized = phone_number.replace(/\D/g, '');
-
-    // Check duplicate
-    const existing = await query(
-      'SELECT user_id FROM whatsapp_connections WHERE phone_number = $1',
-      [normalized]
-    );
+    const existing = await query('SELECT user_id FROM whatsapp_connections WHERE phone_number = $1', [normalized]);
     if (existing.rows.length > 0 && existing.rows[0].user_id !== req.user.id) {
       return res.status(409).json({ error: 'This number is already linked to another account' });
     }
-
-    // Start Baileys session & get QR
+    const { initWhatsAppPersonal } = await import('../services/whatsappPersonal.js');
     const sessionId = `wa_${req.user.id}`;
     const qr = await initWhatsAppPersonal(sessionId, req.user.id, normalized);
-
     res.json({ qr, sessionId });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -122,17 +121,14 @@ router.post('/connect/personal/init', requireAuth, async (req, res) => {
 
 // Poll QR status
 router.get('/connect/personal/status/:sessionId', requireAuth, async (req, res) => {
+  if (IS_SERVERLESS) {
+    return res.status(501).json({ qr: null, connected: false, status: 'unavailable' });
+  }
   try {
+    const { getQRCode } = await import('../services/whatsappPersonal.js');
     const qr = await getQRCode(req.params.sessionId);
-    const conn = await query(
-      'SELECT status FROM whatsapp_connections WHERE user_id = $1',
-      [req.user.id]
-    );
-    res.json({
-      qr,
-      connected: conn.rows[0]?.status === 'connected',
-      status: conn.rows[0]?.status || 'pending'
-    });
+    const conn = await query('SELECT status FROM whatsapp_connections WHERE user_id = $1', [req.user.id]);
+    res.json({ qr, connected: conn.rows[0]?.status === 'connected', status: conn.rows[0]?.status || 'pending' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
