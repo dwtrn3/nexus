@@ -42,8 +42,12 @@ router.post('/login', (req, res, next) => {
     if (!user) return res.status(401).json({ error: info?.message || 'Invalid credentials' });
     req.login(user, async (loginErr) => {
       if (loginErr) return next(loginErr);
-      const setup = await checkSetupStatus(user.id);
-      res.json({ user: sanitizeUser(user), ...setup });
+      try {
+        const setup = await checkSetupStatus(user.id);
+        res.json({ user: sanitizeUser(user), ...setup });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
     });
   })(req, res, next);
 });
@@ -116,8 +120,12 @@ router.post('/demo', async (req, res, next) => {
 
     req.login(user, async (err) => {
       if (err) return next(err);
-      const setup = await checkSetupStatus(user.id);
-      res.json({ user: sanitizeUser(user), ...setup });
+      try {
+        const setup = await checkSetupStatus(user.id);
+        res.json({ user: sanitizeUser(user), ...setup });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

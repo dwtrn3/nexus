@@ -100,8 +100,20 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER update_whatsapp_updated_at BEFORE UPDATE ON whatsapp_connections FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER update_slack_updated_at BEFORE UPDATE ON slack_workspaces FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER update_gmail_updated_at BEFORE UPDATE ON gmail_connections FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER update_gchat_updated_at BEFORE UPDATE ON google_chat_connections FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_users_updated_at') THEN
+    CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_whatsapp_updated_at') THEN
+    CREATE TRIGGER update_whatsapp_updated_at BEFORE UPDATE ON whatsapp_connections FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_slack_updated_at') THEN
+    CREATE TRIGGER update_slack_updated_at BEFORE UPDATE ON slack_workspaces FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_gmail_updated_at') THEN
+    CREATE TRIGGER update_gmail_updated_at BEFORE UPDATE ON gmail_connections FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_gchat_updated_at') THEN
+    CREATE TRIGGER update_gchat_updated_at BEFORE UPDATE ON google_chat_connections FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+  END IF;
+END $$;

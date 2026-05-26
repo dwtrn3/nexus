@@ -1,6 +1,18 @@
 import React, { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+
+// Safely extract a string error message from an Axios error.
+// Vercel's infrastructure errors return { error: { code, message } } (object),
+// so we must not render err.response?.data?.error directly.
+function extractError(err, fallback = 'Something went wrong') {
+  const d = err?.response?.data
+  if (!d) return err?.message || fallback
+  if (typeof d.error === 'string') return d.error
+  if (typeof d.error === 'object' && d.error !== null) return d.error.message || fallback
+  if (typeof d.message === 'string') return d.message
+  return err?.message || fallback
+}
 
 export default function Login() {
   const [mode, setMode] = useState('login') // 'login' | 'register'
@@ -30,7 +42,7 @@ export default function Login() {
         navigate('/inbox')
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Something went wrong')
+      setError(extractError(err, 'Something went wrong'))
     } finally {
       setLoading(false)
     }
@@ -47,7 +59,7 @@ export default function Login() {
       const data = await demo()
       navigate(data.setupComplete ? '/inbox' : '/setup')
     } catch (err) {
-      setError(err.response?.data?.error || 'Demo login failed')
+      setError(extractError(err, 'Demo login failed'))
     } finally {
       setDemoLoading(false)
     }
