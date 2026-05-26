@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Build output
+frontend/dist/
+frontend/.vite/
+
+# Environment
+backend/.env
+!backend/.env.example
+
+# WhatsApp sessions
+backend/sessions/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+
+# Docker volumes
+postgres_data/
+redis_data/
