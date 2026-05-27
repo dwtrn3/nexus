@@ -93,6 +93,9 @@ async function getApp() {
   app.use(passport.session());
   configurePassport(passport);
 
+  // Zero-dependency ping — confirms the function loads (no DB, session, or auth needed)
+  app.get('/api/ping', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
+
   app.use('/api/auth', authRoutes);
   app.use('/api/whatsapp', whatsappRoutes);
   app.use('/api/slack', slackRoutes);
@@ -127,6 +130,16 @@ async function getApp() {
 
 // Vercel calls this handler for every request
 export default async function handler(req, res) {
-  const application = await getApp();
-  return application(req, res);
+  try {
+    const application = await getApp();
+    return application(req, res);
+  } catch (err) {
+    // Catch any startup/initialization error so we always return JSON
+    // (instead of Vercel's HTML "A server error has occurred" page).
+    console.error('[handler] startup error:', err.message, '\n', err.stack);
+    res.status(500).json({
+      error: `Startup error: ${err.message}`,
+      hint: 'Check Vercel function logs for the full stack trace.'
+    });
+  }
 }

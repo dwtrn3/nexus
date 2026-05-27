@@ -1,24 +1,26 @@
 import pg from 'pg';
 const { Pool } = pg;
 
-// In production (Vercel + hosted Postgres), we need:
-// 1. SSL — Neon, Supabase, ElephantSQL etc. all require it.
-// 2. A longer connection timeout — cold-start serverless functions may
-//    take a few seconds before the first DB request lands.
-// 3. A small pool (serverless functions are short-lived; each has its own pool).
-const isProduction = process.env.NODE_ENV === 'production';
 const dbUrl = process.env.DATABASE_URL || 'postgresql://nexus:nexus@localhost:5432/nexus';
 const isLocalhost = dbUrl.includes('localhost') || dbUrl.includes('127.0.0.1');
+const isProduction = process.env.NODE_ENV === 'production';
 
-export const pool = new Pool({
+// Build pool options. SSL is needed for every hosted (non-localhost) Postgres
+// provider (Neon, Supabase, ElephantSQL, Vercel Postgres, etc.).
+const poolOptions = {
   connectionString: dbUrl,
   max: isProduction ? 5 : 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: isProduction ? 15000 : 5000, // cold-start headroom
-  // Enable SSL for all hosted (non-localhost) databases.
-  // rejectUnauthorized:false lets self-signed certs through (Neon, Supabase, etc.)
-  ssl: (isProduction && !isLocalhost) ? { rejectUnauthorized: false } : false,
-});
+  connectionTimeoutMillis: isProduction ? 15000 : 5000,
+};
+
+// Only add the ssl key when it's actually needed — passing ssl:false
+// explicitly can upset some pg versions/connection-string combos.
+if (isProduction && !isLocalhost) {
+  poolOptions.ssl = { rejectUnauthorized: false };
+}
+
+export const pool = new Pool(poolOptions);
 
 pool.on('error', (err) => {
   console.error('Unexpected DB pool error:', err.message);
