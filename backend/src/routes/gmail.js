@@ -1,11 +1,19 @@
 import express from 'express';
-import { google } from 'googleapis';
 import { query } from '../config/database.js';
 import { requireAuth } from '../middleware/auth.js';
 
+// Lazy-load googleapis — it's ~150 MB unzipped and causes OOM on cold start
+// if imported eagerly in a serverless function.
+let _google = null;
+async function getGoogle() {
+  if (!_google) ({ google: _google } = await import('googleapis'));
+  return _google;
+}
+
 const router = express.Router();
 
-function getOAuth2Client() {
+async function getOAuth2Client() {
+  const google = await getGoogle();
   return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
@@ -27,22 +35,26 @@ router.get('/status', requireAuth, async (req, res) => {
 });
 
 // Initiate Gmail OAuth
-router.get('/oauth/initiate', requireAuth, (req, res) => {
-  const oauth2Client = getOAuth2Client();
-  const state = Buffer.from(JSON.stringify({ userId: req.user.id })).toString('base64');
+router.get('/oauth/initiate', requireAuth, async (req, res) => {
+  try {
+    const oauth2Client = await getOAuth2Client();
+    const state = Buffer.from(JSON.stringify({ userId: req.user.id })).toString('base64');
 
-  const url = oauth2Client.generateAuthUrl({
-    access_type: 'offline',
-    prompt: 'consent',
-    scope: [
-      'https://www.googleapis.com/auth/gmail.modify',
-      'https://www.googleapis.com/auth/gmail.send',
-      'https://www.googleapis.com/auth/userinfo.email'
-    ],
-    state
-  });
+    const url = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      prompt: 'consent',
+      scope: [
+        'https://www.googleapis.com/auth/gmail.modify',
+        'https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/userinfo.email'
+      ],
+      state
+    });
 
-  res.json({ url });
+    res.json({ url });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Gmail OAuth callback
@@ -56,7 +68,8 @@ router.get('/oauth/callback', async (req, res) => {
     const stateData = JSON.parse(Buffer.from(state, 'base64').toString());
     const userId = stateData.userId;
 
-    const oauth2Client = getOAuth2Client();
+    const google = await getGoogle();
+    const oauth2Client = await getOAuth2Client();
     const { tokens } = await oauth2Client.getToken(code);
     oauth2Client.setCredentials(tokens);
 
@@ -105,8 +118,9 @@ router.get('/messages', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'Gmail not connected' });
     }
 
+    const google = await getGoogle();
     const conn = connResult.rows[0];
-    const oauth2Client = getOAuth2Client();
+    const oauth2Client = await getOAuth2Client();
     oauth2Client.setCredentials({ refresh_token: conn.refresh_token });
 
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
@@ -156,8 +170,9 @@ async function processGmailNotification(data) {
     );
     if (!connResult.rows[0]) return;
 
+    const google = await getGoogle();
     const conn = connResult.rows[0];
-    const oauth2Client = getOAuth2Client();
+    const oauth2Client = await getOAuth2Client();
     oauth2Client.setCredentials({ refresh_token: conn.refresh_token });
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
