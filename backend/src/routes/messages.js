@@ -3,7 +3,14 @@ import axios from 'axios';
 import { query } from '../config/database.js';
 import { requireAuth } from '../middleware/auth.js';
 import { io } from '../socket/io-singleton.js';
-import { google } from 'googleapis';
+
+// Lazy-load googleapis — it's ~150 MB unzipped; only load it when a
+// Google-channel reply is actually sent (not on every cold start).
+let _google = null;
+async function getGoogle() {
+  if (!_google) ({ google: _google } = await import('googleapis'));
+  return _google;
+}
 
 const router = express.Router();
 
@@ -257,6 +264,7 @@ async function sendGmailReply(userId, toAddress, fullThreadId, content) {
     const conn = await query('SELECT * FROM gmail_connections WHERE user_id = $1', [userId]);
     if (!conn.rows[0]) return { sent: false, error: 'Gmail not connected' };
 
+    const google = await getGoogle();
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
@@ -305,6 +313,7 @@ async function sendGoogleChatReply(userId, spaceId, content) {
     const conn = await query('SELECT * FROM google_chat_connections WHERE user_id = $1', [userId]);
     if (!conn.rows[0]) return { sent: false, error: 'Google Chat not connected' };
 
+    const google = await getGoogle();
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET
