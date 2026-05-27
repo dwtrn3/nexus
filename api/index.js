@@ -1,77 +1,45 @@
 /**
  * Vercel Serverless Entry Point
- * All /api/* requests are routed here by vercel.json.
- * Socket.IO is disabled (no persistent connections in serverless).
  *
- * All route / config imports are DYNAMIC (inside getApp) so that any
- * missing module throws a caught, JSON-formatted error rather than
- * crashing the entire Lambda before the handler runs.
+ * Absolutely zero top-level static imports — everything is loaded
+ * dynamically inside the handler so any load failure surfaces as a
+ * JSON error instead of Vercel's "Function has crashed" HTML page.
  */
-import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import session from 'express-session';
-import passport from 'passport';
 
-// ── Session store: Redis if available, memory otherwise ───────────────────────
-async function buildSessionStore() {
+let _app = null;
+
+async function buildApp() {
+  if (_app) return _app;
+
+  // ── Core middleware (tiny, essential packages) ──────────────────────────
+  const { default: express }  = await import('express');
+  const { default: cors }     = await import('cors');
+  const { default: helmet }   = await import('helmet');
+  const { default: session }  = await import('express-session');
+  const { default: passport } = await import('passport');
+
+  const app = express();
+
+  app.use(helmet({ contentSecurityPolicy: false }));
+  app.use(cors({ origin: true, credentials: true }));
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true }));
+
+  // ── Session store: Redis if available, memory otherwise ─────────────────
+  let store;
   const redisUrl = process.env.REDIS_URL || process.env.KV_URL;
   if (redisUrl) {
     try {
       const { createClient } = await import('redis');
-      const { RedisStore } = await import('connect-redis');
+      const { RedisStore }   = await import('connect-redis');
       const client = createClient({ url: redisUrl });
       await client.connect();
-      console.log('Session store: Redis');
-      return new RedisStore({ client });
-    } catch (err) {
-      console.warn('Redis unavailable, falling back to memory store:', err.message);
+      store = new RedisStore({ client });
+      console.log('[nexus] session store: redis');
+    } catch (e) {
+      console.warn('[nexus] redis unavailable, using memory store:', e.message);
     }
   }
-  console.log('Session store: memory (sessions lost on cold start)');
-  return undefined; // express-session defaults to MemoryStore
-}
-
-// Migrations run once per cold start (idempotent)
-let _ready = false;
-async function ensureReady() {
-  if (_ready) return;
-  try {
-    const { runMigrations } = await import('../backend/src/migrations/run.js');
-    await runMigrations();
-  } catch (e) {
-    console.warn('Migration warning:', e.message);
-  }
-  _ready = true;
-}
-
-// ── App factory (deferred until first request) ────────────────────────────────
-const app = express();
-
-// Zero-dependency ping — registered immediately, before any async init.
-// Hits this even if getApp() hasn't finished yet by registering it on the
-// express instance that handler() uses for all requests.
-app.get('/api/ping', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
-
-let _appReady = false;
-
-async function getApp() {
-  if (_appReady) return app;
-
-  const store = await buildSessionStore();
-  await ensureReady();
-
-  app.use(helmet({ contentSecurityPolicy: false }));
-
-  const origins = (process.env.FRONTEND_URL || '').split(',').map(s => s.trim()).filter(Boolean);
-  app.use(cors({
-    origin: (_origin, cb) => cb(null, true), // permissive — tighten in production if needed
-    credentials: true
-  }));
-
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true }));
 
   app.use(session({
     store,
@@ -82,14 +50,26 @@ async function getApp() {
       secure: process.env.NODE_ENV === 'production',
       httpOnly: true,
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    }
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    },
   }));
 
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // ── Dynamic route imports — failures are caught by handler() ────────────────
+  // ── Passport strategies ─────────────────────────────────────────────────
+  const { configurePassport } = await import('../backend/src/config/passport.js');
+  configurePassport(passport);
+
+  // ── Migrations (best-effort; failure is non-fatal) ──────────────────────
+  try {
+    const { runMigrations } = await import('../backend/src/migrations/run.js');
+    await runMigrations();
+  } catch (e) {
+    console.warn('[nexus] migration warning:', e.message);
+  }
+
+  // ── Routes ──────────────────────────────────────────────────────────────
   const [
     { default: authRoutes },
     { default: whatsappRoutes },
@@ -98,7 +78,6 @@ async function getApp() {
     { default: googleChatRoutes },
     { default: messagesRoutes },
     { default: settingsRoutes },
-    { configurePassport },
   ] = await Promise.all([
     import('../backend/src/routes/auth.js'),
     import('../backend/src/routes/whatsapp.js'),
@@ -107,18 +86,18 @@ async function getApp() {
     import('../backend/src/routes/googleChat.js'),
     import('../backend/src/routes/messages.js'),
     import('../backend/src/routes/settings.js'),
-    import('../backend/src/config/passport.js'),
   ]);
 
-  configurePassport(passport);
-
-  app.use('/api/auth', authRoutes);
-  app.use('/api/whatsapp', whatsappRoutes);
-  app.use('/api/slack', slackRoutes);
-  app.use('/api/gmail', gmailRoutes);
+  app.use('/api/auth',        authRoutes);
+  app.use('/api/whatsapp',    whatsappRoutes);
+  app.use('/api/slack',       slackRoutes);
+  app.use('/api/gmail',       gmailRoutes);
   app.use('/api/google-chat', googleChatRoutes);
-  app.use('/api/messages', messagesRoutes);
-  app.use('/api/settings', settingsRoutes);
+  app.use('/api/messages',    messagesRoutes);
+  app.use('/api/settings',    settingsRoutes);
+
+  // ── Health / ping ───────────────────────────────────────────────────────
+  app.get('/api/ping', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
   app.get('/api/health', async (_req, res) => {
     const result = { status: 'ok', store: store ? 'redis' : 'memory', ts: new Date().toISOString() };
@@ -127,43 +106,50 @@ async function getApp() {
       const db = await testConnection();
       result.db = 'connected';
       result.db_ts = db.ts;
-    } catch (err) {
+    } catch (e) {
       result.db = 'error';
-      result.db_error = err.message;
+      result.db_error = e.message;
       result.status = 'degraded';
     }
     res.json(result);
   });
 
-  // Global error handler
+  // ── Error handler ───────────────────────────────────────────────────────
+  // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => {
-    console.error(err);
+    console.error('[nexus] express error:', err.message);
     res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
   });
 
-  _appReady = true;
+  _app = app;
   return app;
 }
 
-// Vercel calls this handler for every request
+/**
+ * Vercel invokes this for every /api/* request.
+ * All errors — including import failures — are returned as JSON.
+ */
 export default async function handler(req, res) {
-  // /api/ping is registered directly on `app` above — always works.
-  // For everything else, call getApp() to finish initialization.
+  // Fast-path: answer /api/ping without loading anything (no imports needed)
   if (req.url === '/api/ping' || req.url.startsWith('/api/ping?')) {
-    return app(req, res);
+    res.setHeader('Content-Type', 'application/json');
+    return res.end(JSON.stringify({ ok: true, ts: new Date().toISOString() }));
   }
 
   try {
-    const application = await getApp();
-    return application(req, res);
+    const app = await buildApp();
+    return app(req, res);
   } catch (err) {
-    // Any import or startup failure returns structured JSON instead of
-    // Vercel's HTML "This Serverless Function has crashed" page.
-    console.error('[handler] startup error:', err.message, '\n', err.stack);
-    res.status(500).json({
-      error: `Startup error: ${err.message}`,
-      hint: 'Check Vercel function logs for the full stack trace.',
-      module: err.code === 'ERR_MODULE_NOT_FOUND' ? err.url : undefined,
-    });
+    console.error('[nexus] startup error:', err.message, err.stack);
+
+    // Always return JSON — even if express hasn't loaded yet
+    res.setHeader('Content-Type', 'application/json');
+    res.statusCode = 500;
+    res.end(JSON.stringify({
+      error: 'Startup error: ' + err.message,
+      code:  err.code,           // ERR_MODULE_NOT_FOUND etc.
+      module: err.url || null,   // exact missing module path
+      hint: 'Check Vercel function logs for full stack trace.',
+    }));
   }
 }
